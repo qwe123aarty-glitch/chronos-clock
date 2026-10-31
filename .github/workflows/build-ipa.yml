@@ -1,0 +1,68 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ipa:
+    name: Unsigned IPA
+    runs-on: macos-15
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
+      - name: Validate project (fallback to XcodeGen)
+        run: |
+          if xcodebuild -list -project Chronos.xcodeproj > /dev/null 2>&1; then
+            echo "Hand-written project loaded successfully."
+            xcodebuild -list -project Chronos.xcodeproj
+          else
+            echo "::warning::project.pbxproj did not load, regenerating from project.yml"
+            brew install xcodegen
+            xcodegen generate
+            xcodebuild -list -project Chronos.xcodeproj
+          fi
+
+      - name: Build for device (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Chronos.xcodeproj \
+            -scheme Chronos \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package .ipa
+        run: |
+          APP="build/Build/Products/Release-iphoneos/Chronos.app"
+          if [ ! -d "$APP" ]; then
+            echo "Build product missing at $APP"
+            find build/Build/Products -maxdepth 2 -name "*.app"
+            exit 1
+          fi
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry Chronos-unsigned.ipa Payload
+          ls -lh Chronos-unsigned.ipa
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chronos-unsigned-ipa
+          path: Chronos-unsigned.ipa
+          if-no-files-found: error

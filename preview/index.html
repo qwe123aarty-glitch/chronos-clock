@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Chronos">
+<meta name="theme-color" content="#060A12">
+<title>Chronos · 时钟</title>
+<style>
+  :root {
+    --accent: #5CDCF5;
+    --accent2: #8F74FF;
+    --bg1: #070E1C;
+    --bg2: #0B1C2E;
+    --card: rgba(255,255,255,.055);
+    --line: rgba(255,255,255,.10);
+    --dim: rgba(255,255,255,.38);
+    --tab-h: 64px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: ui-rounded, -apple-system, BlinkMacSystemFont, "SF Pro Rounded",
+                 "PingFang SC", "Helvetica Neue", sans-serif;
+    background: var(--bg1);
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #glow {
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(90% 55% at 50% 6%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
+      linear-gradient(180deg, var(--bg1), var(--bg2));
+    transition: background .5s ease;
+    pointer-events: none;
+  }
+  .screen {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    padding-top: env(safe-area-inset-top);
+  }
+  header.hd {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 14px 22px 0;
+    flex: 0 0 auto;
+  }
+  .hd h1 { font-size: 29px; font-weight: 650; letter-spacing: -.4px; line-height: 1.1; }
+  .hd p { font-size: 12.5px; color: var(--dim); margin-top: 4px; font-weight: 500; }
+  .pill {
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 13px; border-radius: 30px;
+    background: var(--card); border: 1px solid var(--line);
+    font-size: 12.5px; font-weight: 550; color: rgba(255,255,255,.75);
+    cursor: pointer;
+  }
+  .pill .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+
+  main { flex: 1 1 auto; position: relative; overflow: hidden; }
+  .page {
+    position: absolute; inset: 0;
+    display: none; flex-direction: column;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) + 12px);
+  }
+  .page.on { display: flex; animation: rise .3s cubic-bezier(.2,.9,.3,1); }
+  @keyframes rise { from { transform: translateY(10px); } to { transform: none; } }
+
+  /* ── 时钟页 ─────────────────────────────── */
+  #p-clock { overflow: hidden; }
+  #dialWrap {
+    flex: 1 1 auto; min-height: 0;
+    display: grid; place-items: center;
+    padding: 8px 28px;
+  }
+  #dial { width: min(100%, 330px); aspect-ratio: 1; display: block; }
+  .digital {
+    display: flex; align-items: baseline; justify-content: center;
+    gap: 4px; flex: 0 0 auto;
+  }
+  .digital .hm {
+    font-size: clamp(46px, 15.5vw, 64px); font-weight: 200; letter-spacing: -2px;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(180deg, #fff, rgba(255,255,255,.7));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    line-height: 1;
+  }
+  .digital .ss {
+    font-size: clamp(18px, 6vw, 23px); font-weight: 650; color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    transition: color .4s;
+  }
+  .dateline {
+    text-align: center; font-size: 13.5px; color: var(--dim);
+    margin-top: 11px; font-variant-numeric: tabular-nums; font-weight: 500;
+    flex: 0 0 auto; padding-bottom: 10px;
+  }
+
+  /* ── 世界时钟 ───────────────────────────── */
+  .list { padding: 18px 20px 0; display: flex; flex-direction: column; gap: 11px; }
+  .city {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px; border-radius: 20px;
+    background: var(--card); border: 1px solid var(--line);
+    animation: rise .3s ease;
+  }
+  .city .orb {
+    width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;
+    display: grid; place-items: center; font-size: 16px;
+    background: rgba(255,255,255,.06); color: rgba(255,255,255,.5);
+  }
+  .city.day .orb { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+  .city .nm { font-size: 15.5px; font-weight: 620; display: flex; align-items: center; gap: 6px; }
+  .city .tag {
+    font-size: 9.5px; font-weight: 700; color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    padding: 2px 6px; border-radius: 20px;
+  }
+  .city .off { font-size: 11px; color: rgba(255,255,255,.32); margin-top: 3px; font-weight: 500; }
+  .city .tm {
+    margin-left: auto; font-size: 29px; font-weight: 250;
+    font-variant-numeric: tabular-nums; letter-spacing: -.5px;
+    color: rgba(255,255,255,.95);
+  }
+  .city:not(.day) .tm { color: rgba(255,255,255,.6); }
+  .addbtn {
+    width: 38px; height: 38px; border-radius: 19px; flex: 0 0 auto;
+    background: var(--card); border: 1px solid var(--line);
+    display: grid; place-items: center; cursor: pointer;
+    color: var(--accent); font-size: 19px; font-weight: 400; line-height: 1;
+  }
+
+  /* ── 秒表 / 计时器共用 ──────────────────── */
+  .bigtime {
+    text-align: center; font-size: 60px; font-weight: 200; letter-spacing: -2px;
+    font-variant-numeric: tabular-nums; line-height: 1;
+    background: linear-gradient(180deg, #fff, rgba(255,255,255,.7));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { text-align: center; font-size: 12px; color: var(--dim); margin-top: 9px; font-weight: 550; }
+  .row { display: flex; gap: 14px; padding: 26px 32px 0; }
+  .btn {
+    flex: 1; height: 54px; border-radius: 27px; border: 1px solid var(--line);
+    background: var(--card); color: rgba(255,255,255,.85);
+    font-size: 15.5px; font-weight: 620; font-family: inherit; cursor: pointer;
+    display: grid; place-items: center; transition: transform .12s, opacity .2s;
+  }
+  .btn:active { transform: scale(.96); }
+  .btn.primary { background: var(--accent); color: #06101a; border-color: transparent; }
+  .btn.primary.stop { background: rgba(255,255,255,.92); }
+  .btn[disabled] { opacity: .28; pointer-events: none; }
+
+  .laps { padding: 16px 20px 0; }
+  .lap {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 4px; border-bottom: 1px solid rgba(255,255,255,.06);
+    font-variant-numeric: tabular-nums;
+  }
+  .lap .i { width: 26px; font-size: 12.5px; font-weight: 700; color: rgba(255,255,255,.32); }
+  .lap .sp { font-size: 15px; font-weight: 550; color: rgba(255,255,255,.9); }
+  .lap .tt { margin-left: auto; font-size: 12.5px; color: rgba(255,255,255,.35); }
+
+  /* ── 计时器 ─────────────────────────────── */
+  #ringWrap { display: grid; place-items: center; padding: 18px 40px 0; }
+  #ring { width: 100%; max-width: 280px; aspect-ratio: 1; }
+  #ringGrad .s1 { stop-color: var(--accent); }
+  #ringGrad .s2 { stop-color: var(--accent2); }
+  .presets {
+    display: flex; gap: 9px; overflow-x: auto; padding: 22px 22px 4px;
+    scrollbar-width: none;
+  }
+  .presets::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; width: 46px; height: 40px; border-radius: 14px;
+    background: rgba(255,255,255,.06); border: 1px solid transparent;
+    color: rgba(255,255,255,.55); font-size: 14px; font-weight: 650;
+    font-family: inherit; display: grid; place-items: center; cursor: pointer;
+  }
+  .chip.on { background: var(--accent); color: #06101a; }
+
+  /* ── 底栏 ───────────────────────────────── */
+  nav.tabbar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    height: calc(var(--tab-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    display: flex; align-items: stretch;
+    background: rgba(8,14,26,.72);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border-top: 1px solid rgba(255,255,255,.07);
+    z-index: 20;
+  }
+  nav.tabbar button {
+    flex: 1; background: none; border: 0; font-family: inherit;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; color: rgba(255,255,255,.38); font-size: 10px; font-weight: 600;
+    cursor: pointer; transition: color .2s;
+  }
+  nav.tabbar button svg { width: 23px; height: 23px; stroke-width: 1.7; }
+  nav.tabbar button.on { color: var(--accent); }
+
+  /* ── 城市选择弹层 ───────────────────────── */
+  .sheet-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    backdrop-filter: blur(6px); z-index: 40; display: none;
+    align-items: flex-end;
+  }
+  .sheet-bg.on { display: flex; }
+  .sheet {
+    width: 100%; max-height: 72vh; background: #0d1420;
+    border-radius: 22px 22px 0 0; padding: 8px 0 calc(20px + env(safe-area-inset-bottom));
+    overflow-y: auto; animation: up .28s cubic-bezier(.2,.9,.3,1);
+  }
+  @keyframes up { from { transform: translateY(100%); } to { transform: none; } }
+  .sheet h3 { font-size: 16px; font-weight: 650; padding: 16px 22px 10px; }
+  .sheet .opt {
+    display: flex; align-items: center; padding: 14px 22px;
+    font-size: 15.5px; cursor: pointer; border-top: 1px solid rgba(255,255,255,.05);
+  }
+  .sheet .opt span { margin-left: auto; font-size: 12px; color: var(--dim); }
+  .sheet .opt:active { background: rgba(255,255,255,.05); }
+</style>
+</head>
+<body>
+<div id="glow"></div>
+
+<div class="screen">
+  <main>
+    <!-- 时钟 -->
+    <section class="page on" id="p-clock">
+      <header class="hd">
+        <div><h1>时钟</h1><p id="zoneName">本地时间</p></div>
+        <div class="pill" id="themeBtn"><i class="dot"></i><span id="themeName">极光</span></div>
+      </header>
+      <div id="dialWrap"><canvas id="dial"></canvas></div>
+      <div class="digital"><span class="hm" id="dhm">00:00</span><span class="ss" id="dss">00</span></div>
+      <div class="dateline" id="ddate">—</div>
+    </section>
+
+    <!-- 世界时钟 -->
+    <section class="page" id="p-world">
+      <header class="hd">
+        <div><h1>世界时钟</h1><p id="cityCount">4 个城市</p></div>
+        <div class="addbtn" id="addCity">+</div>
+      </header>
+      <div class="list" id="cityList"></div>
+    </section>
+
+    <!-- 秒表 -->
+    <section class="page" id="p-sw">
+      <header class="hd"><div><h1>秒表</h1><p>精确到百分之一秒</p></div></header>
+      <div style="padding: 26px 20px 0">
+        <div class="bigtime" id="swTime">00:00.00</div>
+        <div class="sub" id="swSub">就绪</div>
+      </div>
+      <div class="row">
+        <button class="btn" id="swLap" disabled>复位</button>
+        <button class="btn primary" id="swGo">启动</button>
+      </div>
+      <div class="laps" id="lapList"></div>
+    </section>
+
+    <!-- 计时器 -->
+    <section class="page" id="p-timer">
+      <header class="hd"><div><h1>计时器</h1><p id="tSub">选择一个时长</p></div></header>
+      <div id="ringWrap">
+        <svg id="ring" viewBox="0 0 200 200">
+          <defs>
+            <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop class="s1" offset="0%"/>
+              <stop class="s2" offset="100%"/>
+            </linearGradient>
+          </defs>
+          <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="7"/>
+          <circle id="arc" cx="100" cy="100" r="88" fill="none" stroke="url(#ringGrad)"
+                  stroke-width="7" stroke-linecap="round"
+                  stroke-dasharray="552.9" stroke-dashoffset="0"
+                  transform="rotate(-90 100 100)"/>
+          <text x="100" y="93" text-anchor="middle" dominant-baseline="central"
+                fill="#fff" font-size="38" font-weight="200" id="ringText"
+                style="font-variant-numeric: tabular-nums; letter-spacing:-1px">05:00</text>
+          <text x="100" y="124" text-anchor="middle" fill="rgba(255,255,255,.35)"
+                font-size="9" font-weight="600" id="ringSub">总计 5 分钟</text>
+        </svg>
+      </div>
+      <div class="presets" id="presets"></div>
+      <div class="row">
+        <button class="btn" id="tMinus">− 1 分</button>
+        <button class="btn" id="tPlus">+ 1 分</button>
+      </div>
+      <div class="row" style="padding-top:12px">
+        <button class="btn primary" id="tGo">开始</button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" id="tabbar">
+    <button class="on" data-tab="clock">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8" stroke-linecap="round"/></svg>时钟
+    </button>
+    <button data-tab="world">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18"/></svg>世界
+    </button>
+    <button data-tab="sw">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 10v3.5l2.2 1.4M9.5 3h5M12 3v3" stroke-linecap="round"/></svg>秒表
+    </button>
+    <button data-tab="timer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="8.5"/><path d="M12 12V8" stroke-linecap="round"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>计时器
+    </button>
+  </nav>
+</div>
+
+<div class="sheet-bg" id="sheetBg">
+  <div class="sheet">
+    <h3>添加城市</h3>
+    <div id="cityOptions"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ───────────── 主题 ───────────── */
+const THEMES = {
+  aurora: { name: "极光", accent: "#5CDCF5", accent2: "#8F74FF", bg1: "#070E1C", bg2: "#0B1C2E" },
+  ember:  { name: "熔岩", accent: "#FF8F4D", accent2: "#F5476B", bg1: "#170A08", bg2: "#2B100E" },
+  mono:   { name: "墨白", accent: "#EDEDF5", accent2: "#8F96A8", bg1: "#0A0A0C", bg2: "#181820" }
+};
+const themeOrder = ["aurora", "ember", "mono"];
+let themeKey = localStorage.getItem("chronos.theme") || "aurora";
+if (!THEMES[themeKey]) themeKey = "aurora";
+
+function applyTheme() {
+  const t = THEMES[themeKey];
+  const r = document.documentElement.style;
+  r.setProperty("--accent", t.accent);
+  r.setProperty("--accent2", t.accent2);
+  r.setProperty("--bg1", t.bg1);
+  r.setProperty("--bg2", t.bg2);
+  document.getElementById("themeName").textContent = t.name;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", t.bg1);
+}
+applyTheme();
+
+document.getElementById("themeBtn").addEventListener("click", () => {
+  const i = themeOrder.indexOf(themeKey);
+  themeKey = themeOrder[(i + 1) % themeOrder.length];
+  localStorage.setItem("chronos.theme", themeKey);
+  applyTheme();
+});
+
+/* ───────────── 标签页 ───────────── */
+const tabs = ["clock", "world", "sw", "timer"];
+document.querySelectorAll("#tabbar button").forEach(btn => {
+  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+});
+function switchTab(name) {
+  document.querySelectorAll("#tabbar button").forEach(b =>
+    b.classList.toggle("on", b.dataset.tab === name));
+  document.querySelectorAll(".page").forEach(p =>
+    p.classList.toggle("on", p.id === "p-" + name));
+}
+
+/* ───────────── 指针表盘 ───────────── */
+const canvas = document.getElementById("dial");
+const ctx = canvas.getContext("2d");
+let dialSize = 0;
+
+function resizeDial() {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  dialSize = rect.width;
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", () => { resizeDial(); });
+
+function accent() { return THEMES[themeKey].accent; }
+function accent2() { return THEMES[themeKey].accent2; }
+
+function drawDial(d) {
+  const S = dialSize;
+  if (!S) return;
+  const c = S / 2;
+  const R = S / 2 - 1;
+  ctx.clearRect(0, 0, S, S);
+
+  // 盘面
+  const g = ctx.createRadialGradient(c, c, 0, c, c, R);
+  g.addColorStop(0, "rgba(255,255,255,.10)");
+  g.addColorStop(0.62, "rgba(255,255,255,.025)");
+  g.addColorStop(1, "rgba(0,0,0,.30)");
+  ctx.beginPath(); ctx.arc(c, c, R, 0, Math.PI * 2);
+  ctx.fillStyle = g; ctx.fill();
+
+  // 外圈渐变
+  const lg = ctx.createLinearGradient(0, 0, S, S);
+  lg.addColorStop(0, accent() + "D9");
+  lg.addColorStop(0.55, accent2() + "4D");
+  lg.addColorStop(1, accent() + "8C");
+  ctx.beginPath(); ctx.arc(c, c, R - 0.75, 0, Math.PI * 2);
+  ctx.strokeStyle = lg; ctx.lineWidth = 1.5; ctx.stroke();
+
+  const ms = d.getMilliseconds();
+  const sec = d.getSeconds() + ms / 1000;
+  const min = d.getMinutes() + sec / 60;
+  const hr = (d.getHours() % 12) + min / 60;
+
+  // 刻度
+  const outer = R - 12;
+  for (let i = 0; i < 60; i++) {
+    const major = i % 5 === 0;
+    const a = i / 60 * Math.PI * 2;
+    const inner = outer - (major ? 14 : 5.5);
+    ctx.beginPath();
+    ctx.moveTo(c + Math.sin(a) * inner, c - Math.cos(a) * inner);
+    ctx.lineTo(c + Math.sin(a) * outer, c - Math.cos(a) * outer);
+    ctx.strokeStyle = "rgba(255,255,255," + (major ? 0.55 : 0.14) + ")";
+    ctx.lineWidth = major ? 2 : 1;
+    ctx.stroke();
+  }
+
+  // 数字
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const nr = R * 0.735;
+  for (let h = 1; h <= 12; h++) {
+    const a = h / 12 * Math.PI * 2;
+    ctx.font = (h % 3 === 0 ? "600 " : "400 ") + (R * 0.098) + "px ui-rounded, -apple-system, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255," + (h % 3 === 0 ? 0.92 : 0.38) + ")";
+    ctx.fillText(String(h), c + Math.sin(a) * nr, c - Math.cos(a) * nr);
+  }
+
+  function hand(angle, length, width, tail, color, glow) {
+    const x1 = c - Math.sin(angle) * tail, y1 = c + Math.cos(angle) * tail;
+    const x2 = c + Math.sin(angle) * length, y2 = c - Math.cos(angle) * length;
+    ctx.save();
+    if (glow) { ctx.shadowColor = color; ctx.shadowBlur = glow; }
+    ctx.beginPath();
+    ctx.lineCap = "round";
+    ctx.lineWidth = width;
+    ctx.strokeStyle = color;
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  hand(hr / 12 * Math.PI * 2, R * 0.44, R * 0.058, R * 0.07, "rgba(255,255,255,.93)", 0);
+  hand(min / 60 * Math.PI * 2, R * 0.64, R * 0.038, R * 0.09, "rgba(255,255,255,.93)", 0);
+  hand(sec / 60 * Math.PI * 2, R * 0.76, R * 0.017, R * 0.13, accent(), 12);
+
+  // 中心轴
+  ctx.beginPath(); ctx.arc(c, c, R * 0.036, 0, Math.PI * 2);
+  ctx.fillStyle = accent(); ctx.fill();
+  ctx.beginPath(); ctx.arc(c, c, R * 0.013, 0, Math.PI * 2);
+  ctx.fillStyle = "#0b0b0d"; ctx.fill();
+}
+
+/* ───────────── 数字读数 ───────────── */
+const pad = n => String(n).padStart(2, "0");
+const WEEK = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+
+function tickClock() {
+  const d = new Date();
+  drawDial(d);
+  document.getElementById("dhm").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  document.getElementById("dss").textContent = pad(d.getSeconds());
+  document.getElementById("ddate").textContent =
+    d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日 " + WEEK[d.getDay()];
+}
+
+(function loop() {
+  if (document.getElementById("p-clock").classList.contains("on")) tickClock();
+  requestAnimationFrame(loop);
+})();
+
+try {
+  const off = -new Date().getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "−";
+  const hh = pad(Math.floor(Math.abs(off) / 60));
+  const mm = pad(Math.abs(off) % 60);
+  document.getElementById("zoneName").textContent = "本地时间 · UTC" + sign + hh + ":" + mm;
+} catch (e) { /* noop */ }
+
+/* ───────────── 世界时钟 ───────────── */
+const CATALOG = [
+  ["北京", "Asia/Shanghai"], ["香港", "Asia/Hong_Kong"], ["台北", "Asia/Taipei"],
+  ["东京", "Asia/Tokyo"], ["首尔", "Asia/Seoul"], ["新加坡", "Asia/Singapore"],
+  ["曼谷", "Asia/Bangkok"], ["孟买", "Asia/Kolkata"], ["迪拜", "Asia/Dubai"],
+  ["莫斯科", "Europe/Moscow"], ["柏林", "Europe/Berlin"], ["巴黎", "Europe/Paris"],
+  ["伦敦", "Europe/London"], ["纽约", "America/New_York"], ["芝加哥", "America/Chicago"],
+  ["丹佛", "America/Denver"], ["洛杉矶", "America/Los_Angeles"], ["圣保罗", "America/Sao_Paulo"],
+  ["开罗", "Africa/Cairo"], ["悉尼", "Australia/Sydney"], ["奥克兰", "Pacific/Auckland"],
+  ["檀香山", "Pacific/Honolulu"]
+];
+const DEFAULT_CITIES = ["Asia/Shanghai", "Europe/London", "America/New_York", "Asia/Tokyo"];
+
+let cities = [];
+try {
+  const saved = JSON.parse(localStorage.getItem("chronos.cities") || "null");
+  cities = Array.isArray(saved) && saved.length ? saved : DEFAULT_CITIES.slice();
+} catch (e) { cities = DEFAULT_CITIES.slice(); }
+
+function saveCities() { localStorage.setItem("chronos.cities", JSON.stringify(cities)); }
+
+function tzOffsetMinutes(tz, d) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hourCycle: "h23",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit"
+    }).formatToParts(d).reduce((a, p) => (a[p.type] = p.value, a), {});
+    const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day,
+                           +parts.hour % 24, +parts.minute, +parts.second);
+    return Math.round((asUTC - Math.floor(d.getTime() / 1000) * 1000) / 60000);
+  } catch (e) { return 0; }
+}
+
+function cityParts(tz, d) {
+  const p = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit"
+  }).formatToParts(d).reduce((a, x) => (a[x.type] = x.value, a), {});
+  return { h: +p.hour % 24, m: +p.minute, day: +p.day, month: +p.month, year: +p.year };
+}
+
+function offsetLabel(tz, d) {
+  const diff = (tzOffsetMinutes(tz, d) - (-d.getTimezoneOffset())) / 60;
+  if (Math.abs(diff) < 0.01) return "与本地相同";
+  const v = Math.abs(diff);
+  const s = Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1);
+  return (diff > 0 ? "+" : "−") + s + " 小时";
+}
+
+function dayTag(tz, d) {
+  const a = cityParts(tz, d);
+  const b = { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+  const ua = Date.UTC(a.year, a.month - 1, a.day);
+  const ub = Date.UTC(b.year, b.month - 1, b.day);
+  const diff = Math.round((ua - ub) / 86400000);
+  return diff === 1 ? "明天" : diff === -1 ? "昨天" : "";
+}
+
+function nameOf(tz) {
+  const hit = CATALOG.find(c => c[1] === tz);
+  return hit ? hit[0] : tz.split("/").pop().replace(/_/g, " ");
+}
+
+function renderCities() {
+  const d = new Date();
+  const list = document.getElementById("cityList");
+  list.innerHTML = "";
+  cities.forEach((tz, idx) => {
+    const p = cityParts(tz, d);
+    const day = p.h >= 6 && p.h < 18;
+    const tag = dayTag(tz, d);
+    const el = document.createElement("div");
+    el.className = "city" + (day ? " day" : "");
+    el.innerHTML =
+      '<div class="orb">' + (day ? "☀" : "☾") + "</div>" +
+      '<div><div class="nm">' + nameOf(tz) +
+        (tag ? '<span class="tag">' + tag + "</span>" : "") + "</div>" +
+        '<div class="off">' + offsetLabel(tz, d) + "</div></div>" +
+      '<div class="tm">' + pad(p.h) + ":" + pad(p.m) + "</div>";
+    el.addEventListener("contextmenu", ev => {
+      ev.preventDefault();
+      cities.splice(idx, 1);
+      saveCities(); renderCities(); renderOptions();
+    });
+    let timer = null;
+    el.addEventListener("touchstart", () => {
+      timer = setTimeout(() => {
+        if (cities.length > 1) {
+          cities.splice(idx, 1); saveCities(); renderCities(); renderOptions();
+        }
+      }, 650);
+    }, { passive: true });
+    el.addEventListener("touchend", () => clearTimeout(timer));
+    el.addEventListener("touchmove", () => clearTimeout(timer));
+    list.appendChild(el);
+  });
+  document.getElementById("cityCount").textContent = cities.length + " 个城市";
+}
+
+function renderOptions() {
+  const box = document.getElementById("cityOptions");
+  box.innerHTML = "";
+  const d = new Date();
+  CATALOG.filter(c => !cities.includes(c[1])).forEach(c => {
+    const el = document.createElement("div");
+    el.className = "opt";
+    el.innerHTML = c[0] + "<span>" + offsetLabel(c[1], d) + "</span>";
+    el.addEventListener("click", () => {
+      cities.push(c[1]); saveCities(); renderCities(); renderOptions();
+      document.getElementById("sheetBg").classList.remove("on");
+    });
+    box.appendChild(el);
+  });
+  if (!box.children.length) {
+    box.innerHTML = '<div class="opt" style="color:rgba(255,255,255,.4)">已添加全部城市</div>';
+  }
+}
+
+document.getElementById("addCity").addEventListener("click", () => {
+  renderOptions();
+  document.getElementById("sheetBg").classList.add("on");
+});
+document.getElementById("sheetBg").addEventListener("click", e => {
+  if (e.target.id === "sheetBg") e.currentTarget.classList.remove("on");
+});
+
+setInterval(() => {
+  if (document.getElementById("p-world").classList.contains("on")) renderCities();
+}, 1000);
+
+/* ───────────── 秒表 ───────────── */
+let swRunning = false, swStart = 0, swAccum = 0, swLaps = [];
+
+function swElapsed() {
+  return swAccum + (swRunning ? performance.now() - swStart : 0);
+}
+function fmtSW(ms) {
+  const t = Math.max(0, ms);
+  const m = Math.floor(t / 60000);
+  const s = Math.floor(t / 1000) % 60;
+  const cs = Math.floor(t / 10) % 100;
+  return pad(m) + ":" + pad(s) + "." + pad(cs);
+}
+
+const swGo = document.getElementById("swGo");
+const swLapBtn = document.getElementById("swLap");
+
+swGo.addEventListener("click", () => {
+  if (swRunning) {
+    swAccum = swElapsed();
+    swRunning = false;
+    swGo.textContent = "启动";
+    swGo.classList.remove("stop");
+    swLapBtn.textContent = "复位";
+  } else {
+    swStart = performance.now();
+    swRunning = true;
+    swGo.textContent = "停止";
+    swGo.classList.add("stop");
+    swLapBtn.textContent = "计次";
+    swLapBtn.disabled = false;
+  }
+});
+
+swLapBtn.addEventListener("click", () => {
+  if (swRunning) {
+    swLaps.push(swElapsed());
+    renderLaps();
+  } else {
+    swRunning = false; swAccum = 0; swLaps = [];
+    renderLaps();
+    swLapBtn.textContent = "复位";
+    swLapBtn.disabled = true;
+    document.getElementById("swTime").textContent = "00:00.00";
+    document.getElementById("swSub").textContent = "就绪";
+  }
+});
+
+function renderLaps() {
+  const box = document.getElementById("lapList");
+  box.innerHTML = "";
+  for (let i = swLaps.length - 1; i >= 0; i--) {
+    const prev = i === 0 ? 0 : swLaps[i - 1];
+    const el = document.createElement("div");
+    el.className = "lap";
+    el.innerHTML = '<span class="i">' + pad(i + 1) + "</span>" +
+                   '<span class="sp">' + fmtSW(swLaps[i] - prev) + "</span>" +
+                   '<span class="tt">' + fmtSW(swLaps[i]) + "</span>";
+    box.appendChild(el);
+  }
+  document.getElementById("swSub").textContent =
+    swLaps.length ? "第 " + swLaps.length + " 圈" : (swRunning ? "计时中" : "就绪");
+}
+
+(function swLoop() {
+  if (document.getElementById("p-sw").classList.contains("on")) {
+    document.getElementById("swTime").textContent = fmtSW(swElapsed());
+  }
+  requestAnimationFrame(swLoop);
+})();
+
+/* ───────────── 计时器 ───────────── */
+const PRESETS = [1, 3, 5, 10, 15, 25, 30, 45, 60];
+let tTotal = 300000, tRemain = 300000, tEnd = 0, tRunning = false, tDone = false;
+
+const arc = document.getElementById("arc");
+const CIRC = 2 * Math.PI * 88;
+
+const presetBox = document.getElementById("presets");
+PRESETS.forEach(m => {
+  const b = document.createElement("button");
+  b.className = "chip";
+  b.textContent = m;
+  b.dataset.m = m;
+  b.addEventListener("click", () => {
+    if (tRunning) return;
+    tTotal = m * 60000; tRemain = tTotal; tDone = false;
+    renderTimer();
+  });
+  presetBox.appendChild(b);
+});
+
+function fmtTimer(ms) {
+  const t = Math.max(0, Math.ceil(ms / 1000));
+  return pad(Math.floor(t / 60)) + ":" + pad(t % 60);
+}
+function minutesLabel(ms) {
+  const m = Math.round(ms / 60000);
+  return m >= 60 ? Math.floor(m / 60) + " 小时 " + (m % 60) + " 分" : m + " 分钟";
+}
+
+function renderTimer() {
+  const left = tRunning ? Math.max(0, tEnd - Date.now()) : tRemain;
+  document.getElementById("ringText").textContent = fmtTimer(left);
+  const frac = tTotal > 0 ? Math.max(0, Math.min(1, left / tTotal)) : 0;
+  arc.style.strokeDasharray = CIRC;
+  arc.style.strokeDashoffset = CIRC * (1 - frac);
+  document.getElementById("ringSub").textContent =
+    tDone ? "时间到" : (tRunning ? "剩余" : "总计 " + minutesLabel(tTotal));
+  document.querySelectorAll(".chip").forEach(c => {
+    c.classList.toggle("on", !tRunning && +c.dataset.m === Math.round(tTotal / 60000));
+  });
+  document.getElementById("tSub").textContent = tRunning ? "倒计时中" : "选择一个时长";
+  document.getElementById("tGo").textContent = tRunning ? "暂停" : (tDone ? "重新开始" : "开始");
+  document.getElementById("tMinus").disabled = tRunning;
+  document.getElementById("tPlus").disabled = tRunning;
+}
+
+let audioCtx = null;
+function beep() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    [0, 0.28, 0.56].forEach(offset => {
+      const t0 = audioCtx.currentTime + offset;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, t0);
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(0.35, t0 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.22);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t0); osc.stop(t0 + 0.24);
+    });
+  } catch (e) { /* noop */ }
+  if (navigator.vibrate) navigator.vibrate([120, 80, 120, 80, 220]);
+}
+
+document.getElementById("tGo").addEventListener("click", () => {
+  if (tRunning) {
+    tRemain = Math.max(0, tEnd - Date.now());
+    tRunning = false;
+  } else if (tDone) {
+    tRemain = tTotal; tDone = false;
+  } else {
+    tEnd = Date.now() + tRemain;
+    tRunning = true;
+    if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  }
+  renderTimer();
+});
+
+document.getElementById("tMinus").addEventListener("click", () => {
+  tTotal = Math.max(60000, tTotal - 60000); tRemain = tTotal; tDone = false; renderTimer();
+});
+document.getElementById("tPlus").addEventListener("click", () => {
+  tTotal = Math.min(99 * 60000, tTotal + 60000); tRemain = tTotal; tDone = false; renderTimer();
+});
+
+setInterval(() => {
+  if (!tRunning) return;
+  const left = tEnd - Date.now();
+  if (left <= 0) {
+    tRunning = false; tDone = true; tRemain = 0;
+    beep();
+    renderTimer();
+  } else {
+    if (document.getElementById("p-timer").classList.contains("on")) renderTimer();
+  }
+}, 80);
+
+/* ───────────── 启动 ───────────── */
+function boot() {
+  resizeDial();
+  renderCities();
+  renderOptions();
+  renderTimer();
+  tickClock();
+}
+boot();
+window.addEventListener("orientationchange", () => setTimeout(resizeDial, 220));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) boot(); });
+</script>
+</body>
+</html>
